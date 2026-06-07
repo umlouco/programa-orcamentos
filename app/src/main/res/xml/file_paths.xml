@@ -1,0 +1,5 @@
+<paths>
+    <cache-path name="pdfs" path="pdfs/" />
+    <cache-path name="backups" path="backups/" />
+    <files-path name="logos" path="logos/" />
+</paths>
