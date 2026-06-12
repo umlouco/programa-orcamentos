@@ -1,0 +1,534 @@
+# Android Budget and Quotation App — Development Plan
+
+## 1. Project objective
+
+Create a simple Android app for a small construction company to prepare professional budgets or quotations, generate branded PDF files, share them with clients, and keep an archive of previous documents.
+
+The app will work offline. It will not require a server, a subscription, a Google Play Store account, or technical maintenance by the company owner.
+
+The finished app will be delivered as a signed Android APK file that can be installed directly on the owner’s phone. Future versions will be delivered as replacement APK files that update the existing installation without deleting saved data.
+
+---
+
+## 2. Main design principles
+
+The app should be:
+
+* Easy to use for someone who is not technical.
+* Fully functional without internet access.
+* Ready to use immediately after the initial setup.
+* Safe against accidental data loss.
+* Simple to update remotely.
+* Suitable for sending PDFs through email, WhatsApp, or any other installed sharing app.
+* Designed for one company and one main user, without unnecessary account-management features.
+
+---
+
+## 3. First-run setup
+
+When the app opens for the first time, show a guided company setup screen.
+
+### Company details
+
+The user can enter:
+
+* Company logo
+* Company name
+* Address
+* VAT number
+* Telephone number
+* Email address
+* Optional additional contact details
+* Default VAT percentage
+* Currency
+* Default document validity period
+* Optional payment details or notes
+* Optional footer text
+
+The logo can be selected from the phone gallery. The company details remain saved and are automatically inserted into every new PDF.
+
+After setup, these values can be edited from a Settings screen.
+
+---
+
+## 4. Main navigation
+
+Use a simple home screen with large buttons:
+
+1. **Create New Budget**
+2. **Budget Archive**
+3. **Company Settings**
+4. **Backup and Restore**
+
+The interface should avoid complex menus. The most common action, creating a new budget, should always be visible from the home screen.
+
+---
+
+## 5. Create a new budget
+
+### 5.1 Budget header
+
+When creating a new budget, automatically assign a sequential number, for example:
+
+`BUD-2026-0001`
+
+Allow the user to review or edit:
+
+* Budget number
+* Creation date
+* Expiry date or validity period
+* Optional project title
+* Optional project location
+* Status: Draft, Sent, Accepted, Rejected, or Cancelled
+
+### 5.2 Client information
+
+Allow the user to enter:
+
+* Client name
+* Client VAT number
+* Client address
+* Telephone number
+* Email address
+* Optional notes
+
+For the first version, client details can be entered directly in each budget.
+
+A later version may add a reusable client directory so that returning clients can be selected without typing their information again.
+
+### 5.3 Budget line items
+
+Allow the user to add, edit, delete, and reorder line items.
+
+Each line contains:
+
+* Product, service, or work description
+* Quantity
+* Unit type, such as hours, days, square metres, cubic metres, units, kilograms, or a custom value
+* Unit price excluding VAT
+* VAT percentage
+* Line subtotal excluding VAT
+* VAT amount
+* Line total including VAT
+
+The user should be able to select whether prices are entered:
+
+* Excluding VAT; or
+* Including VAT
+
+The app calculates the other values automatically.
+
+Example:
+
+| Description            | Quantity | Unit | Unit Price Excl. VAT | VAT | Total Excl. VAT | Total Incl. VAT |
+| ---------------------- | -------: | ---- | -------------------: | --: | --------------: | --------------: |
+| Interior wall painting |       75 | m²   |                €8.00 | 23% |         €600.00 |         €738.00 |
+
+### 5.4 Totals
+
+At the end of the budget, display:
+
+* Subtotal excluding VAT
+* Total VAT
+* Total including VAT
+
+Optional additions for the initial version or a later minor update:
+
+* Discount percentage or fixed discount
+* Deposit percentage
+* Additional notes
+* Terms and conditions
+* Payment instructions
+
+Calculations must use decimal arithmetic and consistent rounding rules. Monetary values should be stored with sufficient precision and displayed with two decimal places.
+
+---
+
+## 6. PDF generation
+
+The app generates a professional PDF quotation directly on the phone.
+
+### PDF layout
+
+Each PDF should include:
+
+* Company logo
+* Company name
+* Address
+* VAT number
+* Contact details
+* Budget number
+* Issue date
+* Expiry date
+* Client information
+* Project title or location, when present
+* Itemized table
+* Subtotal excluding VAT
+* VAT total
+* Final total including VAT
+* Notes and payment terms
+* Page number on multi-page documents
+
+The PDF layout should support more than one page. Long descriptions and large line-item lists must wrap cleanly without overlapping totals or footers.
+
+### PDF actions
+
+After generating a PDF, show:
+
+* **Preview**
+* **Share PDF**
+* **Save PDF**
+* **Regenerate PDF**
+
+The Share action should open Android’s standard sharing menu so the owner can send the file using WhatsApp, Gmail, Outlook, Google Drive, or another installed app.
+
+Suggested filename:
+
+`BUD-2026-0001_Client-Name.pdf`
+
+---
+
+## 7. Budget archive
+
+Save every budget locally in an archive.
+
+### Archive screen
+
+Display:
+
+* Budget number
+* Client name
+* Issue date
+* Total including VAT
+* Status
+* Last edited date
+
+Add search and filtering by:
+
+* Client name
+* Budget number
+* Date range
+* Status
+
+### Archive actions
+
+For an archived budget, allow the user to:
+
+* Open and view
+* Edit
+* Duplicate as a new budget
+* Generate the PDF again
+* Share the PDF again
+* Change status
+* Delete, with a confirmation message
+
+Duplicating an old budget is important because construction quotes often reuse similar materials and services.
+
+---
+
+## 8. Backup and restore
+
+The app must provide a manual export and import process that is easy to understand.
+
+### Export backup
+
+Add an **Export Backup** button.
+
+When pressed, the app creates a single backup file containing:
+
+* Company information
+* Company logo
+* All clients saved in budgets
+* All budgets
+* All budget line items
+* Document statuses
+* App settings
+* Database version information
+
+Suggested filename:
+
+`ConstructionBudgetBackup_2026-06-07.budgetbackup`
+
+The app opens Android’s standard save dialog. The user can save the file to:
+
+* Downloads
+* Google Drive
+* OneDrive
+* A USB drive, when supported
+* Another folder selected on the phone
+
+### Import backup
+
+Add an **Import Backup** button.
+
+The user selects a previously exported `.budgetbackup` file. Before importing, the app should:
+
+1. Validate the file format.
+2. Show the backup date and number of saved budgets.
+3. Warn that the current local data will be replaced.
+4. Create an automatic safety backup of the current data.
+5. Restore the selected backup.
+6. Confirm that the restore completed successfully.
+
+### Recommended backup reminder
+
+Show a non-intrusive reminder after a configurable interval, such as every 30 days:
+
+> It has been more than 30 days since your last backup. Export a backup now?
+
+The app should also suggest a backup before importing data.
+
+---
+
+## 9. Technical architecture
+
+### Android application stack
+
+Use:
+
+* Kotlin
+* Android Studio
+* Jetpack Compose for the interface
+* Room database for local structured storage
+* DataStore for lightweight application settings
+* Android PDF generation APIs
+* Android Storage Access Framework for user-controlled export and import files
+* Android FileProvider and the system sharing menu for secure PDF sharing
+
+### Local database model
+
+Suggested tables:
+
+#### CompanyProfile
+
+* id
+* name
+* address
+* vatNumber
+* phone
+* email
+* additionalContacts
+* logoReference
+* defaultVatRate
+* currency
+* defaultValidityDays
+* paymentDetails
+* footerText
+
+#### Client
+
+* id
+* name
+* vatNumber
+* address
+* phone
+* email
+* notes
+
+#### Budget
+
+* id
+* budgetNumber
+* clientId
+* issueDate
+* expiryDate
+* projectTitle
+* projectLocation
+* status
+* notes
+* pricesEnteredWithVat
+* subtotalExcludingVat
+* vatTotal
+* totalIncludingVat
+* createdAt
+* updatedAt
+
+#### BudgetLine
+
+* id
+* budgetId
+* position
+* description
+* quantity
+* unit
+* unitPriceExcludingVat
+* vatRate
+* subtotalExcludingVat
+* vatAmount
+* totalIncludingVat
+
+#### AppSettings
+
+* backupFormatVersion
+* nextBudgetNumber
+* lastBackupDate
+* backupReminderDays
+
+---
+
+## 10. Installation and remote updates
+
+The app will not be published on Google Play.
+
+### Initial installation
+
+Deliver a signed APK file to the company owner through a secure link or directly by message.
+
+The owner completes a one-time installation:
+
+1. Download the APK.
+2. Allow installation from the selected browser or file manager when Android requests permission.
+3. Open the downloaded APK.
+4. Tap Install.
+5. Open the app and complete the company setup.
+
+No visit to the owner’s house is required.
+
+### Updates
+
+For each future version:
+
+1. Build a new APK with the same application identifier.
+2. Sign it with the same private signing key.
+3. Send the updated APK through a secure link.
+4. The owner downloads and installs it.
+5. Android updates the existing app while retaining the local database.
+
+The signing key must be stored securely and backed up. Losing it would prevent future APK files from being installed as updates over the existing app.
+
+Before installing a major update, advise the owner to use **Export Backup**.
+
+---
+
+## 11. Security and privacy
+
+For the initial version:
+
+* Store company and client data locally on the phone.
+* Do not require an online account.
+* Do not collect analytics.
+* Do not request unnecessary device permissions.
+* Share PDFs using Android’s secure content-sharing mechanism.
+* Use user-selected locations for exported backups.
+* Validate imported backup files before changing the database.
+* Keep a backup format version so that future app releases can migrate older backups safely.
+
+Optional later improvement:
+
+* Add a PIN or biometric lock when opening the app.
+* Add password-protected backup files if sensitive client data requires additional protection.
+
+---
+
+## 12. Suggested implementation phases
+
+### Phase 1 — Project foundation
+
+* Create the Android project.
+* Add the database structure.
+* Add settings storage.
+* Add the home screen.
+* Build the first-run company setup flow.
+* Add logo selection.
+
+### Phase 2 — Budget editor
+
+* Add client detail entry.
+* Add line-item editing.
+* Add unit selection and custom units.
+* Add VAT calculations.
+* Add totals and validation.
+* Add sequential budget numbering.
+
+### Phase 3 — Archive
+
+* Save draft and completed budgets.
+* Add archive list.
+* Add search and status filtering.
+* Add open, edit, duplicate, and delete actions.
+
+### Phase 4 — PDF and sharing
+
+* Create the branded PDF template.
+* Support multi-page PDFs.
+* Add preview.
+* Add save and secure sharing actions.
+* Test WhatsApp, email, and cloud-drive sharing.
+
+### Phase 5 — Backup and restore
+
+* Create the versioned backup-file format.
+* Add export through the Android save dialog.
+* Add import through the Android file picker.
+* Add validation, safety backup, and confirmation messages.
+* Add the optional backup reminder.
+
+### Phase 6 — Delivery
+
+* Add the final logo and company defaults.
+* Perform real-device testing.
+* Build and sign the release APK.
+* Write a one-page installation guide.
+* Write a one-page backup and restore guide.
+* Deliver the signed APK and retain the signing key securely.
+
+---
+
+## 13. Testing checklist
+
+Before delivery, verify:
+
+* The app installs on the owner’s Android phone.
+* Company details and logo remain saved after restarting the phone.
+* A budget can be created without internet access.
+* VAT calculations are correct for multiple lines and decimal quantities.
+* Prices can be entered with VAT or without VAT.
+* A long budget generates a clean multi-page PDF.
+* The PDF can be shared by WhatsApp and email.
+* Old budgets can be searched, reopened, duplicated, and regenerated.
+* Export produces one backup file.
+* Import restores all company data, logos, budgets, and line items.
+* Installing an updated signed APK preserves existing data.
+* A backup can restore the data after uninstalling and reinstalling the app.
+
+---
+
+## 14. Initial delivery scope
+
+The first release should include:
+
+* Company profile and logo
+* Client details
+* New budget creation
+* Editable line items
+* VAT-inclusive and VAT-exclusive pricing
+* Automatic calculations
+* PDF generation
+* PDF preview and sharing
+* Budget archive
+* Duplicate-budget action
+* Manual backup export
+* Manual backup import
+* Signed APK for direct installation
+* Simple user instructions
+
+Avoid adding login systems, online synchronization, invoicing, accounting integration, and complex user management in the first release. These features can be evaluated after the owner has used the app in day-to-day work.
+
+---
+
+## 15. Possible later improvements
+
+After the initial release is stable, consider:
+
+* Reusable client directory
+* Reusable product and service catalogue
+* Quote-to-invoice conversion
+* Multiple VAT rates in one budget
+* Discounts and deposits
+* Client signature capture
+* Automatic cloud backup
+* Optional PIN or biometric lock
+* Multiple company profiles
+* Tablet layout
+* Export to spreadsheet format
+* Reporting by month, client, or project status
