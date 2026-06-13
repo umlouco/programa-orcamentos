@@ -6,7 +6,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.InputStream
 import java.time.LocalDate
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 data class EditableClient(
     val name: String = "",
@@ -60,7 +64,7 @@ class BudgetRepository(context: Context, private val database: AppDatabase) {
         val sequence = settings.reserveBudgetNumber()
         val now = LocalDate.now()
         return EditableBudget(
-            budgetNumber = "BUD-${now.year}-${sequence.toString().padStart(4, '0')}",
+            budgetNumber = "ORC-${now.year}-${sequence.toString().padStart(4, '0')}",
             expiryDate = now.plusDays((company?.defaultValidityDays ?: 30).toLong()),
             lines = listOf(EditableLine(vatRate = (company?.defaultVatRate ?: 23.0).toString().trimEnd('.', '0')))
         )
@@ -149,7 +153,20 @@ class BudgetRepository(context: Context, private val database: AppDatabase) {
 
     suspend fun deleteBudget(id: Long) = dao.deleteBudget(id)
 
-    suspend fun createBackupJson(): String {
+    data class ImportResult(val imported: Int, val skipped: Int, val total: Int)
+
+    suspend fun createBackupZip(): File {
+        val dir = File(appContext.cacheDir, "backups").also { it.mkdirs() }
+        val file = File(dir, "Orcamentos_Backup_${LocalDate.now()}.zip")
+        ZipOutputStream(file.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("backup.json"))
+            zip.write(createBackupJson().toByteArray())
+            zip.closeEntry()
+        }
+        return file
+    }
+
+    private suspend fun createBackupJson(): String {
         val backup = BackupFile(
             nextBudgetNumber = settings.peekNextBudgetNumber(),
             company = dao.getCompany(),
@@ -159,30 +176,71 @@ class BudgetRepository(context: Context, private val database: AppDatabase) {
         return json.encodeToString(backup)
     }
 
-    suspend fun previewBackup(raw: String): BackupFile = json.decodeFromString(raw)
-
-    suspend fun restoreBackup(raw: String) {
+    suspend fun importFromZip(inputStream: InputStream): ImportResult {
+        val raw = extractJsonFromZip(inputStream)
+            ?: extractJsonFromStream(inputStream)
+            ?: throw IllegalArgumentException("Ficheiro de backup inválido")
         val backup = previewBackup(raw)
-        require(backup.format == "programa-orcamentos" && backup.version == 1) { "Invalid backup file" }
+        require(backup.format == "programa-orcamentos" && backup.version == 1) { "Ficheiro de backup inválido" }
         writeSafetyBackup()
+        var imported = 0
+        var skipped = 0
         database.withTransaction {
-            dao.clearLines()
-            dao.clearBudgets()
-            dao.clearClients()
-            dao.clearCompany()
-            backup.company?.let { dao.saveCompany(it) }
-            backup.budgets.forEach { item ->
-                val clientId = dao.insertClient(item.client.copy(id = 0))
+            if (backup.company != null && dao.getCompany() == null) {
+                dao.saveCompany(backup.company)
+            }
+            for (item in backup.budgets) {
+                if (dao.getBudgetByNumber(item.budget.budgetNumber) != null) {
+                    skipped++
+                    continue
+                }
+                val existingClient = dao.getClientByName(item.client.name)
+                val clientId = if (existingClient != null) {
+                    existingClient.id
+                } else {
+                    dao.insertClient(item.client.copy(id = 0))
+                }
                 val budgetId = dao.insertBudget(item.budget.copy(id = 0, clientId = clientId))
                 dao.insertLines(item.lines.map { it.copy(id = 0, budgetId = budgetId) })
+                imported++
             }
         }
-        settings.setNextBudgetNumber(backup.nextBudgetNumber)
+        return ImportResult(imported = imported, skipped = skipped, total = backup.budgets.size)
     }
+
+    private fun extractJsonFromStream(inputStream: InputStream): String? {
+        return runCatching {
+            inputStream.bufferedReader().use { it.readText() }
+        }.getOrNull()
+    }
+
+    private fun extractJsonFromZip(inputStream: InputStream): String? {
+        return runCatching {
+            val result = StringBuilder()
+            ZipInputStream(inputStream).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (entry.name == "backup.json" || entry.name.endsWith(".json")) {
+                        result.append(zip.bufferedReader().readText())
+                        break
+                    }
+                    entry = zip.nextEntry
+                }
+            }
+            result.toString().ifEmpty { null }
+        }.getOrNull()
+    }
+
+    suspend fun previewBackup(raw: String): BackupFile = json.decodeFromString(raw)
 
     private suspend fun writeSafetyBackup() {
         val dir = File(appContext.cacheDir, "backups").also { it.mkdirs() }
-        File(dir, "SafetyBackup_${LocalDate.now()}.budgetbackup").writeText(createBackupJson())
+        val file = File(dir, "SafetyBackup_${LocalDate.now()}.zip")
+        ZipOutputStream(file.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("backup.json"))
+            zip.write(createBackupJson().toByteArray())
+            zip.closeEntry()
+        }
     }
 
     private fun BudgetWithClientAndLines.toEditable(): EditableBudget =

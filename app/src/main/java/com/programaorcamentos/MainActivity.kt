@@ -7,12 +7,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,7 +28,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -34,6 +36,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -136,7 +139,7 @@ private fun CompanySettingsScreen(app: BudgetApplication, company: CompanyProfil
     }
     Scaffold(topBar = { AppBar("Dados da empresa", onDone) }) { padding ->
         Column(
-            Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp).imePadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(onClick = { logoPicker.launch(arrayOf("image/*")) }) { Text(if (draft.logoUri == null) "Escolher logotipo" else "Alterar logotipo") }
@@ -150,7 +153,7 @@ private fun CompanySettingsScreen(app: BudgetApplication, company: CompanyProfil
             Field("Moeda", draft.currency) { draft = draft.copy(currency = it.uppercase()) }
             Field("Validade predefinida (dias)", draft.defaultValidityDays.toString()) { draft = draft.copy(defaultValidityDays = it.toIntOrNull() ?: draft.defaultValidityDays) }
             Field("Detalhes de pagamento", draft.paymentDetails) { draft = draft.copy(paymentDetails = it) }
-            Field("Rodape", draft.footerText) { draft = draft.copy(footerText = it) }
+            Field("Rodapé", draft.footerText) { draft = draft.copy(footerText = it) }
             Button(
                 onClick = { scope.launch { app.repository.saveCompany(draft); onDone() } },
                 modifier = Modifier.fillMaxWidth().testTag("company_save")
@@ -177,7 +180,7 @@ private fun BudgetEditorScreen(app: BudgetApplication, id: Long?, onDone: () -> 
             Text("A carregar...", Modifier.padding(padding).padding(16.dp))
             return@Scaffold
         }
-        Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Field("Número", current.budgetNumber) { draft = current.copy(budgetNumber = it) }
             Field("Data (AAAA-MM-DD)", current.issueDate.toString()) { draft = current.copy(issueDate = parseDate(it, current.issueDate)) }
             Field("Validade (AAAA-MM-DD)", current.expiryDate.toString()) { draft = current.copy(expiryDate = parseDate(it, current.expiryDate)) }
@@ -201,7 +204,7 @@ private fun BudgetEditorScreen(app: BudgetApplication, id: Long?, onDone: () -> 
                     onChange = { changed -> draft = current.copy(lines = current.lines.toMutableList().also { it[index] = changed }) },
                     onDelete = { draft = current.copy(lines = current.lines.filterIndexed { i, _ -> i != index }.ifEmpty { listOf(EditableLine()) }) }
                 )
-                Divider()
+                HorizontalDivider()
             }
             TextButton(onClick = { draft = current.copy(lines = current.lines + EditableLine()) }) {
                 Icon(Icons.Default.Add, null)
@@ -231,7 +234,7 @@ private fun BudgetEditorScreen(app: BudgetApplication, id: Long?, onDone: () -> 
                     }
                 }, modifier = Modifier.testTag("budget_pdf_share")) {
                     Icon(Icons.Default.PictureAsPdf, null)
-                    Text("PDF / Partilhar")
+                    Text("Partilhar PDF")
                 }
             }
         }
@@ -295,36 +298,39 @@ private fun ArchiveRow(row: BudgetArchiveRow, app: BudgetApplication, scope: kot
 private fun BackupScreen(app: BudgetApplication, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var pendingExport by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf("") }
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val backup = pendingExport
-        if (uri != null && backup != null) {
-            context.contentResolver.openOutputStream(uri)?.use { it.write(backup.toByteArray()) }
-            message = "Backup exportado"
-        }
-    }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) scope.launch {
             runCatching {
-                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
-                val preview = app.repository.previewBackup(raw)
-                app.repository.restoreBackup(raw)
-                "Restaurado backup com ${preview.budgets.size} orçamentos"
-            }.onSuccess { message = it }
-                .onFailure { message = "Ficheiro de backup inválido" }
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    app.repository.importFromZip(stream)
+                } ?: throw IllegalStateException("Não foi possível abrir o ficheiro")
+            }.onSuccess { result ->
+                val parts = mutableListOf<String>()
+                if (result.imported > 0) parts.add("${result.imported} importados")
+                if (result.skipped > 0) parts.add("${result.skipped} ignorados (já existiam)")
+                message = "Backup restaurado: ${parts.joinToString(", ")} de ${result.total} orçamentos"
+            }.onFailure {
+                message = "Ficheiro de backup inválido"
+            }
         }
     }
     Scaffold(topBar = { AppBar("Backup e restauro", onBack) }) { padding ->
         Column(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = {
                 scope.launch {
-                    pendingExport = app.repository.createBackupJson()
-                    exportLauncher.launch("ConstructionBudgetBackup_${LocalDate.now()}.budgetbackup")
+                    val file = app.repository.createBackupZip()
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/zip"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Partilhar backup"))
                 }
             }, modifier = Modifier.fillMaxWidth().testTag("backup_export")) { Text("Exportar backup") }
-            Button(onClick = { importLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth().testTag("backup_import")) { Text("Importar backup") }
-            Text("Ao importar, os dados locais atuais são substituídos pelo ficheiro escolhido.")
+            Button(onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }, modifier = Modifier.fillMaxWidth().testTag("backup_import")) { Text("Importar backup") }
+            Text("Ao importar, apenas orçamentos novos são adicionados. Os existentes não são alterados.")
             if (message.isNotBlank()) Text(message)
         }
     }
@@ -341,7 +347,7 @@ private fun StatusPicker(value: BudgetStatus?, includeAll: Boolean = false, onCh
             readOnly = true,
             label = { Text("Estado") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth()
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             if (includeAll) DropdownMenuItem(text = { Text("Todos") }, onClick = { onChange(null); expanded = false })

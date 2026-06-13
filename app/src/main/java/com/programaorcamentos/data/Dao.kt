@@ -87,4 +87,10 @@ interface BudgetDao {
 
     @Query("DELETE FROM CompanyProfile")
     suspend fun clearCompany()
+
+    @Query("SELECT * FROM Budget WHERE budgetNumber = :number")
+    suspend fun getBudgetByNumber(number: String): Budget?
+
+    @Query("SELECT * FROM Client WHERE name = :name")
+    suspend fun getClientByName(name: String): Client?
 }
