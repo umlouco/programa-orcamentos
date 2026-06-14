@@ -127,25 +127,7 @@ class PdfGenerator(private val context: Context) {
             leftY += (getRowHeight(titlePaint) + 10).toInt()
         }
 
-        // Right Side: Meta Details & Client Profile
-        val budgetTitle = "Orçamento ${full.budget.budgetNumber}"
-        canvas.drawText(budgetTitle, col2X.toFloat(), rightY + getBaselineOffset(titlePaint), rightBoldPaint)
-        rightY += (getRowHeight(titlePaint) + 8).toInt()
-        
-        val metaData = mutableListOf(
-            "Emissão: ${LocalDate.ofEpochDay(full.budget.issueDateEpochDay).format(dateFormat)}",
-            "Validade: ${LocalDate.ofEpochDay(full.budget.expiryDateEpochDay).format(dateFormat)}"
-        )
-        if (full.budget.projectTitle.isNotBlank()) metaData.add("Projeto: ${full.budget.projectTitle}")
-        if (full.budget.projectLocation.isNotBlank()) metaData.add("Local: ${full.budget.projectLocation}")
-        
-        metaData.forEach { text ->
-            canvas.drawText(text, col2X.toFloat(), rightY + getBaselineOffset(normalPaint), rightNormalPaint)
-            rightY += (getRowHeight(normalPaint) + 4).toInt()
-        }
-        
-        // Client details block
-        rightY += 12
+        // Right Side: Client Profile
         canvas.drawText("CLIENTE", col2X.toFloat(), rightY + getBaselineOffset(sectionPaint), rightBoldPaint)
         rightY += (getRowHeight(sectionPaint) + 4).toInt()
         canvas.drawText(full.client.name, col2X.toFloat(), rightY + getBaselineOffset(boldPaint), rightBoldPaint)
@@ -162,13 +144,41 @@ class PdfGenerator(private val context: Context) {
             rightY += (getRowHeight(normalPaint) + 4).toInt()
         }
 
-        y = maxOf(leftY, rightY) + 25
+        y = maxOf(leftY, rightY) + 20
+
+        // --- BUDGET INFO BAR (2-line, horizontal, above the table) ---
+        val budgetTitle = "Orçamento ${full.budget.budgetNumber}"
+        val metaParts = mutableListOf(
+            "Emissão: ${LocalDate.ofEpochDay(full.budget.issueDateEpochDay).format(dateFormat)}",
+            "Validade: ${LocalDate.ofEpochDay(full.budget.expiryDateEpochDay).format(dateFormat)}"
+        )
+        if (full.budget.projectTitle.isNotBlank()) metaParts.add("Projeto: ${full.budget.projectTitle}")
+        if (full.budget.projectLocation.isNotBlank()) metaParts.add("Local: ${full.budget.projectLocation}")
+        
+        val titleInfoPaint = Paint(normalPaint).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); color = primaryColor }
+        val lineH = getRowHeight(normalPaint) + 6f
+        val barHeight = lineH * 2f + 6f
+        val barBottom = y + barHeight
+        
+        canvas.drawRect(margin.toFloat(), y.toFloat(), (pageWidth - margin).toFloat(), barBottom, headerBackgroundPaint)
+        canvas.drawLine(margin.toFloat(), y.toFloat(), (pageWidth - margin).toFloat(), y.toFloat(), linePaint)
+        canvas.drawLine(margin.toFloat(), barBottom, (pageWidth - margin).toFloat(), barBottom, linePaint)
+        
+        val line1Baseline = y + getBaselineOffset(titleInfoPaint) + 5
+        canvas.drawText(budgetTitle, (margin + 6).toFloat(), line1Baseline, titleInfoPaint)
+        
+        val metaText = metaParts.joinToString("  |  ")
+        val line2Baseline = y + lineH + getBaselineOffset(normalPaint) + 5
+        canvas.drawText(metaText, (margin + 6).toFloat(), line2Baseline, normalPaint)
+        
+        y = barBottom.toInt() + 10
 
         // --- MODERN TABLE DESIGN ---
         // X Positions adjusted for clean optical flow (Right-aligning numeric data)
+        val exempt = full.budget.exemptFromVat
         val colDesc = margin + 6
-        val colQtd = 340f
-        val colUn = 390f
+        val colQtd = if (exempt) 360f else 340f
+        val colUn = if (exempt) 420f else 390f
         val colIva = 445f
         val colTot = (pageWidth - margin - 6).toFloat()
         val tableLeft = margin.toFloat()
@@ -177,7 +187,6 @@ class PdfGenerator(private val context: Context) {
 
         fun drawTableHeader() {
             val headerBottom = y + tableRowHeight
-            // Draw clean background block for headers
             canvas.drawRect(tableLeft, y.toFloat(), tableRight, headerBottom, headerBackgroundPaint)
             canvas.drawLine(tableLeft, y.toFloat(), tableRight, y.toFloat(), linePaint)
             canvas.drawLine(tableLeft, headerBottom, tableRight, headerBottom, linePaint)
@@ -186,7 +195,7 @@ class PdfGenerator(private val context: Context) {
             canvas.drawText("Descrição", colDesc.toFloat(), baseline, boldPaint)
             canvas.drawText("Qtd", colQtd, baseline, rightBoldPaint)
             canvas.drawText("Un.", colUn, baseline, rightBoldPaint)
-            canvas.drawText("IVA", colIva, baseline, rightBoldPaint)
+            if (!exempt) canvas.drawText("IVA", colIva, baseline, rightBoldPaint)
             canvas.drawText("Total", colTot, baseline, rightBoldPaint)
             y = headerBottom.toInt()
         }
@@ -198,7 +207,7 @@ class PdfGenerator(private val context: Context) {
             canvas.drawText(desc, colDesc.toFloat(), baseline, normalPaint)
             canvas.drawText(qtd, colQtd, baseline, rightNormalPaint)
             canvas.drawText(un, colUn, baseline, rightNormalPaint)
-            canvas.drawText(iva, colIva, baseline, rightNormalPaint)
+            if (!exempt) canvas.drawText(iva, colIva, baseline, rightNormalPaint)
             canvas.drawText(tot, colTot, baseline, rightNormalPaint)
             
             canvas.drawLine(tableLeft, rowBottom, tableRight, rowBottom, linePaint)
@@ -208,7 +217,7 @@ class PdfGenerator(private val context: Context) {
         drawTableHeader()
 
         full.lines.sortedBy { it.position }.forEach { item ->
-            val descLines = item.description.chunked(42) // Safely break long lines
+            val descLines = item.description.chunked(42)
             if (y + tableRowHeight > pageHeight - 80) {
                 newPage()
                 drawTableHeader()
@@ -217,7 +226,7 @@ class PdfGenerator(private val context: Context) {
                 desc = descLines.first(),
                 qtd = item.quantity.toString(),
                 un = item.unit.take(4),
-                iva = "${item.vatRate}%",
+                iva = if (exempt) "0%" else "${item.vatRate}%",
                 tot = formatMoney(item.totalIncludingVatCents, company?.currency ?: "EUR")
             )
             descLines.drop(1).forEach { continuation ->
@@ -247,7 +256,7 @@ class PdfGenerator(private val context: Context) {
         val totalStr = formatMoney(full.budget.totalIncludingVatCents, company?.currency ?: "EUR")
 
         drawSummaryLine("Subtotal:", subtotalStr, normalPaint, rightNormalPaint)
-        drawSummaryLine("IVA:", vatStr, normalPaint, rightNormalPaint)
+        if (!exempt) drawSummaryLine("IVA:", vatStr, normalPaint, rightNormalPaint)
         
         // Emphasized Grand Total Box
         y += 4

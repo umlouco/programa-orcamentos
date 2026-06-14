@@ -65,6 +65,7 @@ import com.programaorcamentos.data.CompanyProfile
 import com.programaorcamentos.data.EditableBudget
 import com.programaorcamentos.data.EditableLine
 import com.programaorcamentos.data.formatMoney
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -97,8 +98,10 @@ class MainActivity : ComponentActivity() {
 private fun BudgetApp(app: BudgetApplication) {
     val company by app.repository.observeCompany().collectAsStateWithLifecycle(initialValue = null)
     var screen by remember { mutableStateOf<Screen>(Screen.Loading) }
-    LaunchedEffect(company) {
-        if (screen == Screen.Loading) screen = if (company == null) Screen.Settings else Screen.Home
+    LaunchedEffect(Unit) {
+        app.repository.observeCompany().first().let { company ->
+            screen = if (company == null) Screen.Settings else Screen.Home
+        }
     }
     when (val current = screen) {
         Screen.Loading -> Text("A carregar...", Modifier.padding(24.dp))
@@ -130,7 +133,7 @@ private fun HomeScreen(onNavigate: (Screen) -> Unit) {
 private fun CompanySettingsScreen(app: BudgetApplication, company: CompanyProfile, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var draft by remember(company) { mutableStateOf(company) }
+    var draft by remember { mutableStateOf(company) }
     val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -191,6 +194,10 @@ private fun BudgetEditorScreen(app: BudgetApplication, id: Long?, onDone: () -> 
                 Checkbox(current.pricesEnteredWithVat, onCheckedChange = { draft = current.copy(pricesEnteredWithVat = it) })
                 Text("Preços introduzidos com IVA", Modifier.padding(top = 12.dp))
             }
+            Row {
+                Checkbox(current.exemptFromVat, onCheckedChange = { draft = current.copy(exemptFromVat = it) })
+                Text("Orçamento sem IVA", Modifier.padding(top = 12.dp))
+            }
             Text("Cliente", fontWeight = FontWeight.Bold)
             Field("Nome", current.client.name) { draft = current.copy(client = current.client.copy(name = it)) }
             Field("NIF", current.client.vatNumber) { draft = current.copy(client = current.client.copy(vatNumber = it)) }
@@ -201,6 +208,7 @@ private fun BudgetEditorScreen(app: BudgetApplication, id: Long?, onDone: () -> 
             current.lines.forEachIndexed { index, line ->
                 LineEditor(
                     line = line,
+                    exemptFromVat = current.exemptFromVat,
                     onChange = { changed -> draft = current.copy(lines = current.lines.toMutableList().also { it[index] = changed }) },
                     onDelete = { draft = current.copy(lines = current.lines.filterIndexed { i, _ -> i != index }.ifEmpty { listOf(EditableLine()) }) }
                 )
@@ -236,6 +244,18 @@ private fun BudgetEditorScreen(app: BudgetApplication, id: Long?, onDone: () -> 
                     Icon(Icons.Default.PictureAsPdf, null)
                     Text("Partilhar PDF")
                 }
+                TextButton(onClick = {
+                    scope.launch {
+                        val savedId = app.repository.saveBudgetTransactional(current)
+                        val full = app.repository.getFullBudget(savedId) ?: return@launch
+                        val file = app.pdfGenerator.generate(app.repository.getCompany(), full)
+                        val uri = app.pdfGenerator.uriFor(file)
+                        context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/pdf")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        })
+                    }
+                }) { Text("Ver PDF") }
             }
         }
     }
@@ -288,7 +308,18 @@ private fun ArchiveRow(row: BudgetArchiveRow, app: BudgetApplication, scope: kot
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     })
                 }
-            }) { Text("PDF") }
+            }) { Text("Partilhar") }
+            TextButton(onClick = {
+                scope.launch {
+                    val full = app.repository.getFullBudget(row.id) ?: return@launch
+                    val file = app.pdfGenerator.generate(app.repository.getCompany(), full)
+                    val uri = app.pdfGenerator.uriFor(file)
+                    context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/pdf")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    })
+                }
+            }) { Text("Ver") }
             IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Apagar") }
         }
     }
@@ -359,7 +390,7 @@ private fun StatusPicker(value: BudgetStatus?, includeAll: Boolean = false, onCh
 }
 
 @Composable
-private fun LineEditor(line: EditableLine, onChange: (EditableLine) -> Unit, onDelete: () -> Unit) {
+private fun LineEditor(line: EditableLine, exemptFromVat: Boolean, onChange: (EditableLine) -> Unit, onDelete: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row {
             Field("Descrição", line.description, Modifier.weight(1f)) { onChange(line.copy(description = it)) }
@@ -369,7 +400,7 @@ private fun LineEditor(line: EditableLine, onChange: (EditableLine) -> Unit, onD
             Field("Qtd", line.quantity, Modifier.weight(1f)) { onChange(line.copy(quantity = it)) }
             Field("Un.", line.unit, Modifier.weight(1f)) { onChange(line.copy(unit = it)) }
             Field("Preço", line.unitPrice, Modifier.weight(1f)) { onChange(line.copy(unitPrice = it)) }
-            Field("IVA", line.vatRate, Modifier.weight(1f)) { onChange(line.copy(vatRate = it)) }
+            if (!exemptFromVat) Field("IVA", line.vatRate, Modifier.weight(1f)) { onChange(line.copy(vatRate = it)) }
         }
     }
 }

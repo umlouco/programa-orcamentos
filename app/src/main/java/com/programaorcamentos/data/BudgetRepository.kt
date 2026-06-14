@@ -40,6 +40,7 @@ data class EditableBudget(
     val status: BudgetStatus = BudgetStatus.Draft,
     val notes: String = "",
     val pricesEnteredWithVat: Boolean = false,
+    val exemptFromVat: Boolean = false,
     val client: EditableClient = EditableClient(),
     val lines: List<EditableLine> = listOf(EditableLine()),
 )
@@ -83,7 +84,8 @@ class BudgetRepository(context: Context, private val database: AppDatabase) {
         val calculated = cleanLines.mapIndexed { index, line ->
             val quantity = line.quantity.replace(",", ".").toDoubleOrNull() ?: 0.0
             val vatRate = line.vatRate.replace(",", ".").toDoubleOrNull() ?: 0.0
-            val totals = calculateLine(quantity, parseMoneyToCents(line.unitPrice), vatRate, editable.pricesEnteredWithVat)
+            val effectiveVatRate = if (editable.exemptFromVat) 0.0 else vatRate
+            val totals = calculateLine(quantity, parseMoneyToCents(line.unitPrice), effectiveVatRate, editable.pricesEnteredWithVat)
             Triple(index, line.copy(quantity = quantity.toString(), vatRate = vatRate.toString()), totals)
         }
         val subtotal = calculated.sumOf { it.third.subtotalExcludingVatCents }
@@ -116,6 +118,7 @@ class BudgetRepository(context: Context, private val database: AppDatabase) {
                 status = editable.status,
                 notes = editable.notes,
                 pricesEnteredWithVat = editable.pricesEnteredWithVat,
+                exemptFromVat = editable.exemptFromVat,
                 subtotalExcludingVatCents = subtotal,
                 vatTotalCents = vat,
                 totalIncludingVatCents = total,
@@ -254,6 +257,7 @@ class BudgetRepository(context: Context, private val database: AppDatabase) {
             status = budget.status,
             notes = budget.notes,
             pricesEnteredWithVat = budget.pricesEnteredWithVat,
+            exemptFromVat = budget.exemptFromVat,
             client = EditableClient(client.name, client.vatNumber, client.address, client.phone, client.email, client.notes),
             lines = lines.sortedBy { it.position }.map {
                 EditableLine(

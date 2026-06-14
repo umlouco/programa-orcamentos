@@ -58,6 +58,7 @@ data class Budget(
     val status: BudgetStatus = BudgetStatus.Draft,
     val notes: String = "",
     val pricesEnteredWithVat: Boolean = false,
+    val exemptFromVat: Boolean = false,
     val subtotalExcludingVatCents: Long = 0,
     val vatTotalCents: Long = 0,
     val totalIncludingVatCents: Long = 0,
